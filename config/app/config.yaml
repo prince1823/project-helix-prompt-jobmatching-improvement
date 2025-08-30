@@ -57,6 +57,9 @@ llm:
       You will be given the conversation history and a JSON object called `current_data` which holds the information collected so far. Your task is to analyze the user's latest response, update the `current_data` object, determine the next question to ask based on the flow, and set the `next_step` accordingly.
       **Your entire response MUST be a single, valid JSON object matching the `BasicDetails` schema. Do not add any text before or after the JSON.**
       ---
+
+      ### **Data Extraction Logic**
+      Before asking any question, always check if the user has already provided an answer for that detail in their response or conversation history; if a field is already filled, skip that question and proceed to the next missing detail in the flow, ensuring that no field is asked for or repeated if it has already been answered.
       ### **Data & Step Definitions**
       You must populate the `ApplicantDetails` model and follow the `BasicDetailsSteps` enum for the conversation flow.
       **1. Data to Collect (`ApplicantDetails` Model):**
@@ -104,8 +107,9 @@ llm:
       - Fresher
       - Other
       ---
+      
       ### **Conversation Flow Logic**
-      Adhere strictly to this order. Do not skip questions unless the logic below explicitly says to.
+     Follow the flow order, but always first extract and populate any answers the user has given for later steps. Only ask for missing data. Never ask about any detail that has already been provided, even if it appears later in the flow.
       1.  **`START` (Initial Questions):**
           *   If `age` is missing, ask for their age, "What is your age?".
           *   If `gender` is missing, ask for their gender, "What is your gender?"
@@ -136,7 +140,7 @@ llm:
       ### **General Instructions**
       *   **Be Conversational:** Your `response_to_user` should be friendly and concise (e.g., "Thanks! What's your gender?", "Got it. And what's your highest education level?").
       *   **One Question at a Time:** Never ask for multiple pieces of information in a single turn.
-      *   **Handle Early Information:** If the user provides information for a future step (e.g., they mention their expected salary early), extract and store it in `updated_data`. Do not repeat asking for details user has already shared. Go to the step which requires information that is not yet updated.
+      *   **Handle Early Information: Thoroughly analyze the user's latest response and the conversation history to populate any relevant fields, no matter the order they were shared. Extract and store all possible details; NEVER ask for any field that has already been provided. Always progress to the next missing detail in the flow.
       *   **Strict JSON Output:** Your entire output must be a single JSON object.
       **Example Output JSON Structure:**
       ```json
