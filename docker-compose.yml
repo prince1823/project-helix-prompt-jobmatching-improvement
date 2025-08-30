@@ -1,0 +1,299 @@
+name: quess-whatsapp-bot
+
+volumes:
+  quess_whatsapp_kafka: 
+    driver: local
+    driver_opts:
+      type: 'none'
+      o: 'bind'
+      device: '/home/quessvdract/project-helix/docker-volumes/kafka'
+  quess_whatsapp_zookeeper:
+    driver: local
+    driver_opts:
+      type: 'none'
+      o: 'bind'
+      device: '/home/quessvdract/project-helix/docker-volumes/zookeeper'
+  quess_whatsapp_config:
+    driver: local
+    driver_opts:
+      type: 'none'
+      o: 'bind'
+      device: '/home/quessvdract/project-helix/docker-volumes/app'
+  quess_whatsapp_redis:
+    driver: local
+    driver_opts:
+      type: 'none'
+      o: 'bind'
+      device: '/home/quessvdract/project-helix/docker-volumes/redis'
+  quess_secor_admin_data:
+    driver: local
+    driver_opts:
+      type: 'none'
+      o: 'bind'
+      device: '/home/quessvdract/project-helix/docker-volumes/secor/admin/data'
+  quess_secor_admin_config:
+    driver: local
+    driver_opts:
+      type: 'none'
+      o: 'bind'
+      device: '/home/quessvdract/project-helix/docker-volumes/secor/admin/config'
+  quess_secor_failed_data:
+    driver: local
+    driver_opts:
+      type: 'none'
+      o: 'bind'
+      device: '/home/quessvdract/project-helix/docker-volumes/secor/failed/data'
+  quess_secor_failed_config:
+    driver: local
+    driver_opts:
+      type: 'none'
+      o: 'bind'
+      device: '/home/quessvdract/project-helix/docker-volumes/secor/failed/config'
+  quess_secor_ingest_data:
+    driver: local
+    driver_opts:
+      type: 'none'
+      o: 'bind'
+      device: '/home/quessvdract/project-helix/docker-volumes/secor/ingest/data'
+  quess_secor_ingest_config:
+    driver: local
+    driver_opts:
+      type: 'none'
+      o: 'bind'
+      device: '/home/quessvdract/project-helix/docker-volumes/secor/ingest/config'
+  quess_secor_output_data:
+    driver: local
+    driver_opts:
+      type: 'none'
+      o: 'bind'
+      device: '/home/quessvdract/project-helix/docker-volumes/secor/output/data'
+  quess_secor_output_config:
+    driver: local
+    driver_opts:
+      type: 'none'
+      o: 'bind'
+      device: '/home/quessvdract/project-helix/docker-volumes/secor/output/config'
+  quess_secor_raw_data:
+    driver: local
+    driver_opts:
+      type: 'none'
+      o: 'bind'
+      device: '/home/quessvdract/project-helix/docker-volumes/secor/raw/data'
+  quess_secor_raw_config:
+    driver: local
+    driver_opts:
+      type: 'none'
+      o: 'bind'
+      device: '/home/quessvdract/project-helix/docker-volumes/secor/raw/config'
+services:
+  whatsapp-bot-go:
+    container_name: whatsapp-bot-go
+    image: sanketikahub/quess-whatsapp-bot-go:0.3.0
+    entrypoint: ["go", "run", "main.go", "handler.go"]
+    depends_on:
+      - kafka
+    volumes:
+      - quess_whatsapp_config:/app/config/app
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+  whatsapp-bot-py:
+    container_name: whatsapp-bot-py
+    image: sanketikahub/quess-whatsapp-bot-py:0.3.0
+    entrypoint: ["./start-services.sh"]
+    depends_on:
+      - kafka
+      - whatsapp-bot-go
+      - whatsapp-redis
+    env_file: .env
+    volumes:
+      - quess_whatsapp_config:/app/config/app
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+  whatsapp-bot-ui:
+    container_name: whatsapp-bot-ui
+    image: sanketikahub/quess-whatsapp-bot-ui:0.2.0
+    entrypoint: ["uv", "run", "streamlit", "run", "main.py", "--server.port=8501", "--server.address=0.0.0.0"]
+    volumes:
+      - quess_whatsapp_config:/app/config/app
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+    ports:
+      - "8501:8501"
+  whatsapp-redis:
+    container_name: whatsapp-redis
+    image: redis:7.2-alpine
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 512M
+    ports:
+      - "6379:6379"
+    volumes:
+      - quess_whatsapp_redis:/data
+    command: >
+      sh -c "redis-server --notify-keyspace-events Ex --maxmemory 2gb --save 60 1"
+  kafka:
+    container_name: whatsapp-kafka
+    image: bitnami/kafka:3.8.0
+    restart: always
+    depends_on:
+      - zookeeper
+    volumes: 
+      - quess_whatsapp_kafka:/bitnami/kafka/data
+    environment:
+      - KAFKA_BROKER_ID=1
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://whatsapp-kafka:9092
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_CREATE_TOPICS="prod.quess.raw:1:1,prod.quess.ingest:1:1,prod.quess.output:1:1,prod.quess.failed:1:1,prod.quess.admin:1:1,"
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+  zookeeper:
+    container_name: whatsapp-zookeeper
+    image: bitnami/zookeeper:latest
+    volumes: 
+      - quess_whatsapp_zookeeper:/bitnami/zookeeper/data
+    environment:
+      - ZOO_MY_ID=1
+      - ALLOW_ANONYMOUS_LOGIN=yes
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.256'
+          memory: 512M
+  whatsapp-redis:
+    container_name: whatsapp-redis
+    image: redis:7.2-alpine
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 512M
+    ports:
+      - "6379:6379"
+    volumes:
+      - quess_whatsapp_redis:/data
+    command: >
+      sh -c "redis-server --notify-keyspace-events Ex --maxmemory 2gb --save 60 1"
+  secor-admin:
+    container_name: whatsapp-secor-admin
+    image: sanketikahub/secor:0.29.1
+    depends_on:
+      - kafka
+      - zookeeper
+    environment:
+      CONFIG_FILE: "/opt/secor/config/secor.partition.properties"
+      SECOR_GROUP: "admin-backup"
+      LOG4J_CONFIGURATION: "/opt/secor/config/log4j.docker.properties"
+      JVM_MEMORY: 1024m
+      TIMEZONE: UTC
+    volumes:
+      - quess_secor_admin_data:/mnt/data
+      - quess_secor_admin_config:/opt/secor/config
+    deploy:
+      resources:
+        limits:
+          cpus: '0.128'
+          memory: 256M
+    user: "${UID}:${GID}"
+  secor-failed:
+    container_name: whatsapp-secor-failed
+    image: sanketikahub/secor:0.29.1
+    depends_on:
+      - kafka
+      - zookeeper
+    environment:
+      CONFIG_FILE: "/opt/secor/config/secor.partition.properties"
+      SECOR_GROUP: "failed-backup"
+      LOG4J_CONFIGURATION: "/opt/secor/config/log4j.docker.properties"
+      JVM_MEMORY: 1024m
+      TIMEZONE: UTC
+    volumes:
+      - quess_secor_failed_data:/mnt/data
+      - quess_secor_failed_config:/opt/secor/config
+    deploy:
+      resources:
+        limits:
+          cpus: '0.128'
+          memory: 256M
+    user: "${UID}:${GID}"
+  secor-ingest:
+    container_name: whatsapp-secor-ingest
+    image: sanketikahub/secor:0.29.1
+    depends_on:
+      - kafka
+      - zookeeper
+    environment:
+      CONFIG_FILE: "/opt/secor/config/secor.partition.properties"
+      SECOR_GROUP: "ingest-backup"
+      LOG4J_CONFIGURATION: "/opt/secor/config/log4j.docker.properties"
+      JVM_MEMORY: 1024m
+      TIMEZONE: UTC
+    volumes:
+      - quess_secor_ingest_data:/mnt/data
+      - quess_secor_ingest_config:/opt/secor/config
+    deploy:
+      resources:
+        limits:
+          cpus: '0.128'
+          memory: 256M
+    user: "${UID}:${GID}"
+  secor-output:
+    container_name: whatsapp-secor-output
+    image: sanketikahub/secor:0.29.1
+    depends_on:
+      - kafka
+      - zookeeper
+    environment:
+      CONFIG_FILE: "/opt/secor/config/secor.partition.properties"
+      SECOR_GROUP: "output-backup"
+      LOG4J_CONFIGURATION: "/opt/secor/config/log4j.docker.properties"
+      JVM_MEMORY: 1024m
+      TIMEZONE: UTC
+    volumes:
+      - quess_secor_output_data:/mnt/data
+      - quess_secor_output_config:/opt/secor/config
+    deploy:
+      resources:
+        limits:
+          cpus: '0.128'
+          memory: 256M
+    user: "${UID}:${GID}"
+  secor-raw:
+    container_name: whatsapp-secor-raw
+    image: sanketikahub/secor:0.29.1
+    depends_on:
+      - kafka
+      - zookeeper
+    user: "${UID}:${GID}"
+    environment:
+      CONFIG_FILE: "/opt/secor/config/secor.partition.properties"
+      SECOR_GROUP: "raw-backup"
+      LOG4J_CONFIGURATION: "/opt/secor/config/log4j.docker.properties"
+      JVM_MEMORY: 1024m
+      TIMEZONE: UTC
+    volumes:
+      - quess_secor_raw_data:/mnt/data
+      - quess_secor_raw_config:/opt/secor/config
+    deploy:
+      resources:
+        limits:
+          cpus: '0.128'
+          memory: 256M

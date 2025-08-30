@@ -1,0 +1,5 @@
+**/__pycache__
+**/.venv
+**/.python-version
+**/stubs
+**/.ruff_cache
